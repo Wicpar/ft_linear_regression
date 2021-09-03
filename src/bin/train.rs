@@ -1,6 +1,6 @@
 use std::env;
 use ft_linear_regression::theta::{ThetaFileArg, save_theta};
-use ft_linear_regression::args::{F64Parser, ArgParser, FileParser, DefaultArgParser, arg_err};
+use ft_linear_regression::args::{F64Parser, ArgParser, DefaultArgParser, arg_err};
 use ft_linear_regression::dataset::{DatasetArg, Dataset, DatasetEntry};
 use ft_linear_regression::estimate_price::estimate_price;
 use std::time::Instant;
@@ -14,7 +14,7 @@ impl F64Parser<'_> for LearnRatioArg {
 }
 
 impl DefaultArgParser<'_, f64> for LearnRatioArg {
-    const DEFAULT: f64 = 0.1;
+    const DEFAULT: f64 = 0.00001;
 }
 
 fn main() {
@@ -37,11 +37,12 @@ fn main() {
 
         let base = ratio / normalized.entries.len() as f64;
 
-        let mut iter = 0;
+        let mut iter: usize = 0;
         let start = Instant::now();
         loop {
             let last = theta;
             let tmp = normalized.entries.iter().map(|DatasetEntry { km, price }| {
+                // use the temporary t0 so we don't compute things twice
                 let t0 = estimate_price(*km, theta) - price;
                 (t0, t0 * km)
             }).reduce(|a, b| (a.0 + b.0, a.1 + b.1)).unwrap_or((0.0, 0.0));
@@ -53,8 +54,18 @@ fn main() {
             if (last.0 - theta.0).abs() == 0.0 && (last.1 - theta.1).abs() == 0.0 {
                 break;
             }
+            // Cold function because we want the loop to be tight, thus not have all this garbage inlined. Reduces runtime by about 10%
+            #[cold]
+            fn print_info(iter: usize, start: &Instant, theta: (f64, f64)) {
+                println!("{} iterations in {:.3}s", iter, start.elapsed().as_secs_f64());
+                println!("Theta is currently {:?}", theta);
+            }
+            if iter & 0b1111111111111111111111111 == 0 {
+                print_info(iter, &start, theta);
+            }
         }
-        println!("Done in {} iterations in {:.3}s", iter, start.elapsed().as_secs_f64());
+
+        println!("Done {} iterations in {:.3}s", iter, start.elapsed().as_secs_f64());
         //normalized.draw_to_file_with_theta("normalized.png", theta);
         //raw.draw_to_file_with_theta("raw.png", raw.denormalize_theta(theta));
 
